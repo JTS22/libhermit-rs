@@ -1,6 +1,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::{isize, ptr, slice, str};
+use core::convert::{TryFrom, TryInto};
+use core::{isize, slice, str};
 
 use crate::arch;
 use crate::console::CONSOLE;
@@ -85,7 +86,6 @@ pub trait SyscallInterface: Send + Sync {
 
 	fn get_application_parameters(&self) -> (i32, *const *const u8, *const *const u8) {
 		let mut argv = Vec::new();
-
 		let name = Box::leak(Box::new("{name}\0")).as_ptr();
 		argv.push(name);
 
@@ -97,12 +97,21 @@ pub trait SyscallInterface: Send + Sync {
 			}
 		}
 
-		let environ = ptr::null() as *const *const u8;
+		let mut envv = Vec::new();
+
+		let envs = environment::get_command_line_envv();
+		debug!("Setting envv as: {:?}", envs);
+		for a in envs {
+			let ptr = Box::leak(format!("{}\0", a).into_boxed_str()).as_ptr();
+			envv.push(ptr);
+		}
+		envv.push(0usize as *const u8);
 
 		let argc = argv.len() as i32;
 		let argv = Box::leak(argv.into_boxed_slice()).as_ptr();
+		let envv = Box::leak(envv.into_boxed_slice()).as_ptr();
 
-		(argc, argv, environ)
+		(argc, argv, envv)
 	}
 
 	fn shutdown(&self, _arg: i32) -> ! {
