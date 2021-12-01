@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["hermit"] = [{"text":"impl TryFrom&lt;i32&gt; for <a class=\"enum\" href=\"hermit/fs/enum.SeekWhence.html\" title=\"enum hermit::fs::SeekWhence\">SeekWhence</a>","synthetic":false,"types":["hermit::syscalls::fs::SeekWhence"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
