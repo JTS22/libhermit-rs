@@ -2,7 +2,7 @@ use core::alloc::AllocError;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use multiboot::information::{MemoryType, Multiboot};
 
-use crate::arch::x86_64::kernel::{get_limit, get_mbinfo};
+use crate::arch::x86_64::kernel::{get_limit, get_mmap_format, get_mmap_length, get_mmap_addr};
 use crate::arch::x86_64::mm::paging::{BasePageSize, PageSize};
 use crate::arch::x86_64::mm::MEM;
 use crate::arch::x86_64::mm::{PhysAddr, VirtAddr};
@@ -13,37 +13,51 @@ use crate::synch::spinlock::*;
 static PHYSICAL_FREE_LIST: SpinlockIrqSave<FreeList> = SpinlockIrqSave::new(FreeList::new());
 static TOTAL_MEMORY: AtomicUsize = AtomicUsize::new(0);
 
-fn detect_from_multiboot_info() -> Result<(), ()> {
-	let mb_info = get_mbinfo();
-	if mb_info.is_zero() {
+fn detect_from_memory_map() -> Result<(), ()> {
+	let mmap_addr = get_mmap_addr();
+	if mmap_addr.is_zero() {
 		return Err(());
 	}
 
-	let mb = unsafe { Multiboot::from_ptr(mb_info.as_u64(), &mut MEM).unwrap() };
-	let all_regions = mb
-		.memory_regions()
-		.expect("Could not find a memory map in the Multiboot information");
-	let ram_regions = all_regions.filter(|m| {
-		m.memory_type() == MemoryType::Available
-			&& m.base_address() + m.length() > mm::kernel_end_address().as_u64()
-	});
+	let mmap_format = get_mmap_format();
+	if mmap_format > 1 {
+		panic!("Unsupported value for memory map format in boot info: {}", mmap_format)
+	}
+
+	let mmap_size = get_mmap_length();
+	if mmap_size == 0 {
+		panic!("Memory map given in boot info has size 0");
+	}
+
 	let mut found_ram = false;
 
-	for m in ram_regions {
-		found_ram = true;
+	if mmap_format == 0 {
+		todo!("Implement init logic for multiboot format!");
+	} else if mmap_format == 1 {
+		// The memory map is given in Linux / e820 format. The size of one map entry is always 20 bytes
+		let number_of_entries: usize = mmap_size / 20;
+		for index in 0..number_of_entries {
+			let entry_addr: usize = mmap_addr.as_usize() + index * 20;
+			let region_base_addr = unsafe { *(entry_addr as *const u64) };
+			let region_length = unsafe {  *((entry_addr + 8) as *const u64) };
+			let region_type = unsafe {  *((entry_addr + 16) as *const u32) };
 
-		let start_address = if m.base_address() <= mm::kernel_start_address().as_u64() {
-			mm::kernel_end_address()
-		} else {
-			VirtAddr(m.base_address())
-		};
-
-		let entry = FreeListEntry::new(
-			start_address.as_usize(),
-			(m.base_address() + m.length()) as usize,
-		);
-		let _ = TOTAL_MEMORY.fetch_add((m.base_address() + m.length()) as usize, Ordering::SeqCst);
-		PHYSICAL_FREE_LIST.lock().list.push_back(entry);
+			if region_type == 1 && region_base_addr + region_length > mm::kernel_end_address().as_u64() {
+				found_ram = true;
+				let start_address = if region_base_addr <= mm::kernel_start_address().as_u64() {
+					mm::kernel_end_address()
+				} else {
+					VirtAddr(region_base_addr)
+				};
+		
+				let entry = FreeListEntry::new(
+					start_address.as_usize(),
+					(region_base_addr + region_length) as usize,
+				);
+				let _ = TOTAL_MEMORY.fetch_add((region_base_addr + region_length) as usize, Ordering::SeqCst);
+				PHYSICAL_FREE_LIST.lock().list.push_back(entry);
+			}
+		}
 	}
 
 	assert!(
@@ -82,7 +96,7 @@ fn detect_from_limits() -> Result<(), ()> {
 }
 
 pub fn init() {
-	detect_from_multiboot_info()
+	detect_from_memory_map()
 		.or_else(|_e| detect_from_limits())
 		.unwrap();
 }

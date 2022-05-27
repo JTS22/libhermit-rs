@@ -58,7 +58,9 @@ pub struct BootInfo {
 	current_percore_address: u64,
 	host_logical_addr: u64,
 	boot_gtod: u64,
-	mb_info: u64,
+	mmap_format: u8,
+	mmap_length: u64,
+	mmap_addr: u64,
 	cmdline: u64,
 	cmdsize: u64,
 	cpu_freq: u32,
@@ -89,7 +91,9 @@ impl BootInfo {
 		current_percore_address: 0,
 		host_logical_addr: 0,
 		boot_gtod: 0,
-		mb_info: 0,
+		mmap_format: 0,
+		mmap_length: 0,
+		mmap_addr: 0,
 		cmdline: 0,
 		cmdsize: 0,
 		cpu_freq: 0,
@@ -210,8 +214,19 @@ pub fn get_tls_align() -> usize {
 	unsafe { core::ptr::read_volatile(&(*BOOT_INFO).tls_align) as usize }
 }
 
-pub fn get_mbinfo() -> VirtAddr {
-	unsafe { VirtAddr(core::ptr::read_volatile(&(*BOOT_INFO).mb_info)) }
+// Indicates whether the memory map is given in Multiboot or Linux Boot-Param format.
+// The former has variable size entries whereas the latter has fixed size (20 Bytes) entries 
+// Format 0 indicates Multiboot, format 1 indicates Linux Boot-Params
+pub fn get_mmap_format() -> u8 {
+	unsafe { core::ptr::read_volatile(&(*BOOT_INFO).mmap_format) as u8 }
+}
+
+pub fn get_mmap_length() -> usize {
+	unsafe { core::ptr::read_volatile(&(*BOOT_INFO).mmap_length) as usize }
+}
+
+pub fn get_mmap_addr() -> VirtAddr {
+	unsafe { VirtAddr(core::ptr::read_volatile(&(*BOOT_INFO).mmap_addr)) }
 }
 
 #[cfg(feature = "smp")]

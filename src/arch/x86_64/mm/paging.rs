@@ -8,7 +8,8 @@ use x86::tlb;
 
 #[cfg(feature = "smp")]
 use crate::arch::x86_64::kernel::apic;
-use crate::arch::x86_64::kernel::get_mbinfo;
+use crate::arch::x86_64::kernel::get_mmap_length;
+use crate::arch::x86_64::kernel::get_mmap_addr;
 use crate::arch::x86_64::kernel::irq;
 use crate::arch::x86_64::kernel::processor;
 use crate::arch::x86_64::mm::physicalmem;
@@ -743,21 +744,12 @@ pub fn init_page_tables() {
 		// flush tlb
 		controlregs::cr3_write(pml4);
 
-		// Identity-map the supplied Multiboot information and command line.
-		let mb_info = get_mbinfo();
-		if !mb_info.is_zero() {
-			info!("Found Multiboot info at {:#x}", mb_info);
-			identity_map(PhysAddr(mb_info.as_u64()), PhysAddr(mb_info.as_u64()));
-
-			// Map the "Memory Map" information too.
-			let mb = Multiboot::from_ptr(mb_info.as_u64(), &mut MEM).unwrap();
-			let memory_map_address = mb
-				.memory_regions()
-				.expect("Could not find a memory map in the Multiboot information")
-				.next()
-				.expect("Could not first map address")
-				.base_address();
-			identity_map(PhysAddr(memory_map_address), PhysAddr(memory_map_address));
+		// Identity-map the supplied Memory Map and command line.
+		let mmap_addr = get_mmap_addr();
+		let mmap_length = get_mmap_length();
+		if !mmap_addr.is_zero() {
+			info!("Found Memory Map at {:#x} (size {})", mmap_addr, mmap_length);
+			identity_map(PhysAddr(mmap_addr.as_u64()), PhysAddr(mmap_addr.as_u64() + mmap_length as u64 - 1u64));
 		}
 
 		let cmdsize = env::get_cmdsize();
