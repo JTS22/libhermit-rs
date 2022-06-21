@@ -731,13 +731,17 @@ pub fn init_page_tables() {
 		debug!("Found PML4 at {:#x}", pml4);
 
 		// make sure that only the required areas are mapped
-		let start = pde
-			+ ((mm::kernel_end_address().as_usize() >> (PAGE_MAP_BITS + PAGE_BITS))
-				* mem::size_of::<u64>()) as u64;
-		let size = (512 - (mm::kernel_end_address().as_usize() >> (PAGE_MAP_BITS + PAGE_BITS)))
-			* mem::size_of::<u64>();
+		// let start = pde
+		// 	+ ((mm::kernel_end_address().as_usize() >> (PAGE_MAP_BITS + PAGE_BITS))
+		// 		* mem::size_of::<u64>()) as u64;
+		// let size = (512 - (mm::kernel_end_address().as_usize() >> (PAGE_MAP_BITS + PAGE_BITS)))
+		// 	* mem::size_of::<u64>();
+		// info!("PDE:  {:x}, Start {:x}, Size {:x}", pde, mm::kernel_end_address().as_usize(), size);
+		// info!("Writing at {:x} for size {:x}", start, size);
 
-		ptr::write_bytes(start as *mut u8, 0u8, size);
+		// ptr::write_bytes(start as *mut u8, 0u8, size);
+
+		// info!("TEST2");
 
 		//TODO: clearing the memory befor kernel_start_address()
 
@@ -745,6 +749,7 @@ pub fn init_page_tables() {
 		controlregs::cr3_write(pml4);
 
 		// Identity-map the supplied Memory Map and command line.
+		
 		let mmap_addr = get_mmap_addr();
 		let mmap_length = get_mmap_length();
 		if !mmap_addr.is_zero() {
