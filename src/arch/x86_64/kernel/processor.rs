@@ -772,7 +772,7 @@ pub fn configure() {
 	cr0.insert(Cr0::CR0_TASK_SWITCHED);
 
 	// Prevent writes to read-only pages in Ring 0.
-	cr0.insert(Cr0::CR0_WRITE_PROTECT);
+	//cr0.insert(Cr0::CR0_WRITE_PROTECT);
 
 	debug!("Set CR0 to {:#x}", cr0);
 	unsafe {
