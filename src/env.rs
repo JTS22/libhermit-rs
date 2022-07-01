@@ -41,6 +41,7 @@ struct Cli {
 	#[allow(dead_code)]
 	image_path: Option<String>,
 	freq: Option<u16>,
+	network_address: Option<usize>,
 	env_vars: Vec<String>,
 	args: Vec<String>,
 }
@@ -63,6 +64,7 @@ impl Default for Cli {
 		let mut freq = None;
 		let mut env_vars = Vec::new();
 		let mut args = Vec::new();
+		let mut network_address = None;
 
 		let words = shell_words::split(get_cmdline_str()).unwrap();
 		debug!("cli_words = {words:?}");
@@ -92,19 +94,31 @@ impl Default for Cli {
 					env_vars.push(format!("HERMIT_GATEWAY={gateway}"));
 				}
 				"--" => args.extend(&mut words),
+				_ if word.starts_with("virtio_mmio.device=") => {
+					info!("Found virtio cmdline entry: {}", word);
+					let mut word_split = word.split('@');
+					let mut size = word_split.next();
+					let mut rest = word_split.next().unwrap();
+					let mut rest_split = rest.split(':');
+					let address = rest_split.next().unwrap();
+					network_address = Some(usize::from_str_radix(address.trim_start_matches("0x"), 16).unwrap());
+				}
 				_ if image_path.is_none() => image_path = Some(word),
-				word => warn!(
-					"Found argument '{word}' which wasn't expected, or isn't valid in this context. 
-					If you tried to supply `{word}` as a value rather than a flag, use `-- {word}`"
-				),
+				word => {
+					warn!(
+						"Found argument '{word}' which wasn't expected, or isn't valid in this context. 
+						If you tried to supply `{word}` as a value rather than a flag, use `-- {word}`"
+					);
+				}
 			};
 		}
 
 		Self {
 			image_path,
 			freq,
+			network_address,
 			env_vars,
-			args,
+			args
 		}
 	}
 }
@@ -126,4 +140,8 @@ pub fn args() -> &'static [String] {
 /// Whether HermitCore shall communicate with the "proxy" application over a network interface.
 pub fn is_proxy() -> bool {
 	ENV.get().unwrap().is_proxy
+}
+
+pub fn get_network_address() -> Option<usize> {
+	ENV.get().unwrap().cli.network_address
 }

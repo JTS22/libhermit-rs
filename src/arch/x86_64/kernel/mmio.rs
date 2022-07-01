@@ -3,6 +3,7 @@ use crate::collections::irqsave;
 use crate::arch::x86_64::mm::paging;
 use crate::arch::x86_64::mm::paging::{BasePageSize, PageSize, PageTableEntryFlags};
 use crate::arch::x86_64::mm::PhysAddr;
+use crate::env;
 use crate::drivers::net::virtio_net::VirtioNetDriver;
 use crate::drivers::net::NetworkInterface;
 use crate::drivers::virtio::transport::mmio as mmio_virtio;
@@ -35,11 +36,61 @@ impl MmioDriver {
 
 /// Tries to find the network device within the specified address range.
 /// Returns a reference to it within the Ok() if successful or an Err() on failure.
-pub fn detect_network() -> Result<&'static mut MmioRegisterLayout, &'static str> {
+pub fn detect_network(mmio_address: Option<usize>) -> Result<&'static mut MmioRegisterLayout, &'static str> {
 	// Trigger page mapping in the first iteration!
 	let mut current_page = 0;
 	let virtual_address = crate::arch::mm::virtualmem::allocate(BasePageSize::SIZE).unwrap();
 
+	if let Some(current_address) = mmio_address {
+		let mut flags = PageTableEntryFlags::empty();
+		flags.normal().writable();
+		paging::map::<BasePageSize>(
+			virtual_address,
+			PhysAddr::from(align_down!(current_address, BasePageSize::SIZE)),
+			1,
+			flags,
+		);
+
+		// Verify the first register value to find out if this is really an MMIO magic-value.
+		let mmio = unsafe {
+			&mut *((virtual_address.as_usize() | (current_address & (BasePageSize::SIZE - 1)))
+				as *mut MmioRegisterLayout)
+		};
+
+		let magic = mmio.get_magic_value();
+		let version = mmio.get_version();
+
+		if magic != MAGIC_VALUE {
+			panic!("It's not a MMIO-device at {:#X}", mmio as *const _ as usize);
+		}
+
+		if version != 2 {
+			panic!("Found a legacy MMIO device, which isn't supported");
+		}
+
+		// We found a MMIO-device (whose 512-bit address in this structure).
+		info!("Found a MMIO-device at {:#X}", mmio as *const _ as usize);
+
+		// Verify the device-ID to find the network card
+		let id = mmio.get_device_id();
+
+		if id != DevId::VIRTIO_DEV_ID_NET {
+			panic!(
+				"It's not a network card at {:#X}",
+				mmio as *const _ as usize
+			);
+		}
+
+		info!("Found network card at {:#X}", mmio as *const _ as usize);
+
+		crate::arch::mm::physicalmem::reserve(
+			PhysAddr::from(align_down!(current_address, BasePageSize::SIZE)),
+			BasePageSize::SIZE,
+		);
+
+		return Ok(mmio);
+	}
+	
 	// Look for the device-ID in all possible 64-byte aligned addresses within this range.
 	for current_address in (MMIO_START..MMIO_END).step_by(512) {
 		trace!(
@@ -125,7 +176,7 @@ pub fn get_network_driver() -> Option<&'static SpinlockIrqSave<dyn NetworkInterf
 pub fn init_drivers() {
 	// virtio: MMIO Device Discovery
 	irqsave(|| {
-		if let Ok(mmio) = detect_network() {
+		if let Ok(mmio) = detect_network(env::get_network_address()) {
 			warn!(
 				"Found MMIO device, but we guess the interrupt number {}!",
 				IRQ_NUMBER
