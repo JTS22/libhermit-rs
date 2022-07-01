@@ -778,7 +778,7 @@ impl VirtioNetDriver {
 		let min_feats: Vec<Features> = vec![
 			Features::VIRTIO_F_VERSION_1,
 			Features::VIRTIO_NET_F_MAC,
-			Features::VIRTIO_NET_F_STATUS,
+			//Features::VIRTIO_NET_F_STATUS,
 		];
 
 		let mut min_feat_set = FeatureSet::new(0);
@@ -818,7 +818,8 @@ impl VirtioNetDriver {
 					VirtioNetError::IncompFeatsSet(drv_feats, dev_feats) => {
 						// Create a new matching feature set for device and driver if the minimal set is met!
 						if (min_feat_set & dev_feats) != min_feat_set {
-							error!("Device features set, does not satisfy minimal features needed. Aborting!");
+							error!("Device features set, does not satisfy minimal features needed. Aborting! Min features: {:#b}, Device features: {:#b}",
+								u64::from(min_feat_set), u64::from(dev_feats));
 							return Err(VirtioNetError::FailFeatureNeg(self.dev_cfg.dev_id));
 						} else {
 							feats = match Features::from_set(dev_feats & drv_feats) {
